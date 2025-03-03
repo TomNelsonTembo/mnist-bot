@@ -17,6 +17,31 @@ Before running the bot, ensure you have the following installed:
 ## Installation
 1. Clone the repository:
 ```
-git clone https://github.com/your-username/automated-request-bot.git
-cd automated-request-bot
+git clone git@github.com:TomNelsonTembo/mnist-bot.git
+cd mnist-bot
 ```
+
+2. Install dependencies:
+```
+go mod tidy
+```
+
+3. Build the bot:
+```
+go build -o mnist-bot
+```
+
+## Usage
+To run the bot, use the following command:
+```
+./mnist-bot.exe --api=<API_ENDPOINT> --interval <REQUEST_INTERVAL> --bots <NUMBER_OF_CONCURRENT_REQUESTS> --data ./Assets/Data/data.json
+```
+
+## Contribution
+This project was developed as part of a Bachelor's Thesis titled "Optimizing Cloud-Based Machine Learning Models for Low-Latency Applications". Contributions to the project are welcome. If you find any issues or have suggestions for improvements, please open an issue or submit a pull request.
+
+## Acknowledgments
+- Go Programming Language: For its efficient concurrency model and lightweight design.
+- TensorFlow Serving: For providing a scalable and flexible serving system for machine learning models.
+
+For any questions or further information, please contact the author at [Tom Nelson Tembo](https://www.linkedin.com/in/tom-nelson-tembo-440ba0235/).
