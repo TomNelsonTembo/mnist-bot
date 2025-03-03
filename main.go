@@ -41,6 +41,7 @@ var (
 	// Logs
 	logEntries []string
 	logMutex   sync.Mutex
+	maxLogs    = 10 // Limit logs displayed in UI
 )
 
 // loadMNISTData loads MNIST samples from a CSV or JSON file
@@ -53,13 +54,11 @@ func loadMNISTData(filename string) error {
 
 	// Check the file extension
 	if len(filename) > 5 && filename[len(filename)-5:] == ".json" {
-		// Load JSON file
 		decoder := json.NewDecoder(file)
 		if err := decoder.Decode(&mnistSamples); err != nil {
 			return fmt.Errorf("failed to decode JSON: %v", err)
 		}
 	} else {
-		// Load CSV file
 		reader := csv.NewReader(file)
 		for {
 			record, err := reader.Read()
@@ -82,7 +81,7 @@ func loadMNISTData(filename string) error {
 		}
 	}
 
-	logger.Infof("Loaded %d MNIST samples", len(mnistSamples))
+	logToWidget(fmt.Sprintf("Loaded %d MNIST samples", len(mnistSamples)))
 	return nil
 }
 
@@ -98,17 +97,13 @@ func sendData(apiURL string, data []float64, wg *sync.WaitGroup) {
 
 	startTime := time.Now()
 
-	// Prepare the request body
-	requestBody := MNISTData{
-		Instances: [][]float64{data},
-	}
+	requestBody := MNISTData{Instances: [][]float64{data}}
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		logToWidget(fmt.Sprintf("Error marshaling JSON: %v", err))
 		return
 	}
 
-	// Send the POST request
 	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		logToWidget(fmt.Sprintf("Error sending request: %v", err))
@@ -119,7 +114,7 @@ func sendData(apiURL string, data []float64, wg *sync.WaitGroup) {
 	}
 	defer resp.Body.Close()
 
-	latency := time.Since(startTime).Seconds() * 1000 // Convert to milliseconds
+	latency := time.Since(startTime).Seconds() * 1000
 
 	metricsMutex.Lock()
 	totalRequests++
@@ -129,45 +124,14 @@ func sendData(apiURL string, data []float64, wg *sync.WaitGroup) {
 		averageLatency = calculateAverageLatency()
 	} else {
 		failedRequests++
-		logToWidget(fmt.Sprintf("Request failed with status: %s", resp.Status))
+		logToWidget(fmt.Sprintf("Request failed: %s", resp.Status))
 	}
 	metricsMutex.Unlock()
 
-	// Read and log the response
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logToWidget(fmt.Sprintf("Error reading response: %v", err))
-		return
-	}
-
-	// Ensure the directory exists
-	dir := "Assets/Results"
-	err = os.MkdirAll(dir, os.ModePerm)
-	if err != nil {
-		logToWidget(fmt.Sprintf("Error creating directory: %v", err))
-		return
-	}
-
-	// Append response to file with timestamp
-	filename := fmt.Sprintf("%s/responses.txt", dir)
-	entry := fmt.Sprintf("Time: %s\nResponse: %s\n\n", time.Now().Format(time.RFC3339), string(responseBody))
-
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		logToWidget(fmt.Sprintf("Error opening file: %v", err))
-		return
-	}
-	defer file.Close()
-
-	if _, err := file.WriteString(entry); err != nil {
-		logToWidget(fmt.Sprintf("Error writing response to file: %v", err))
-		return
-	}
-
-	logToWidget(fmt.Sprintf("Request sent and response saved successfully (Latency: %.2f ms)", latency))
+	logToWidget(fmt.Sprintf("Request sent and Saved Successfully, Latency: %.2f ms", latency))
 }
 
-// calculateAverageLatency computes the average latency from the recorded latencies
+// calculateAverageLatency computes the average latency from recorded values
 func calculateAverageLatency() float64 {
 	sum := 0.0
 	for _, latency := range latencies {
@@ -197,12 +161,12 @@ func startBot(apiURL string, interval time.Duration, wg *sync.WaitGroup, quitCha
 	}
 }
 
-// logToWidget adds a log entry to the log widget
+// logToWidget adds a log entry while ensuring it doesn't overflow the UI
 func logToWidget(message string) {
 	logMutex.Lock()
 	defer logMutex.Unlock()
 	logEntries = append(logEntries, message)
-	if len(logEntries) > 10 { // Keep only the last 10 log entries
+	if len(logEntries) > maxLogs {
 		logEntries = logEntries[1:]
 	}
 }
@@ -214,12 +178,12 @@ func renderMetricsTable() *widgets.Table {
 		{"Metric", "Value"},
 		{"Total Requests", fmt.Sprintf("%d", totalRequests)},
 		{"Success Requests", fmt.Sprintf("%d", successRequests)},
-		{"Average Latency (ms)", fmt.Sprintf("%.2f", averageLatency)},
 		{"Failed Requests", fmt.Sprintf("%d", failedRequests)},
+		{"Average Latency (ms)", fmt.Sprintf("%.2f", averageLatency)},
 	}
 	table.TextStyle = termui.NewStyle(termui.ColorWhite)
 	table.Title = "MNIST Bot Metrics"
-	table.SetRect(0, 0, 50, 18) // Adjust the height of the table
+	table.SetRect(0, 0, 50, 12)
 	return table
 }
 
@@ -227,13 +191,13 @@ func renderMetricsTable() *widgets.Table {
 func renderLogWidget() *widgets.List {
 	list := widgets.NewList()
 	list.Title = "Logs"
-	list.Rows = logEntries
 	list.TextStyle = termui.NewStyle(termui.ColorWhite)
 	list.WrapText = true
-	list.SetRect(0, 8, 100, 18) // Position below the metrics table
+	list.SetRect(0, 9, 100, 18) // Positioned below metrics
 	return list
 }
 
+// starts sending randomly selected data at a specific rate
 func main() {
 	apiURL := flag.String("api", "", "API endpoint URL")
 	numBots := flag.Int("bots", 1, "Number of concurrent bots")
@@ -241,6 +205,7 @@ func main() {
 	dataFile := flag.String("data", "./Assets/Data/data.json", "Path to MNIST data file")
 	flag.Parse()
 
+	// loads MNIST Data
 	if err := loadMNISTData(*dataFile); err != nil {
 		logger.Fatalf("Failed to load MNIST data: %v", err)
 	}
@@ -250,11 +215,11 @@ func main() {
 	}
 	defer termui.Close()
 
-	quitChan := make(chan struct{}) // Broadcast channel
+	quitChan := make(chan struct{})
 	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
 
-	logToWidget(fmt.Sprintf("Starting %d MNIST bots with %d-second intervals...", *numBots, *interval))
+	logToWidget(fmt.Sprintf("Starting %d MNIST bots at %d-second intervals...", *numBots, *interval))
 
 	var wg sync.WaitGroup
 	for i := 0; i < *numBots; i++ {
@@ -262,16 +227,13 @@ func main() {
 		go startBot(*apiURL, time.Duration(*interval)*time.Second, &wg, quitChan)
 	}
 
-	// UI Event Handling
 	uiEvents := termui.PollEvents()
 	table := renderMetricsTable()
-	fmt.Print("\n\n\n")
 	logWidget := renderLogWidget()
 
-	// Render initial UI
+	// Initial UI rendering
 	termui.Render(table, logWidget)
 
-	// Update the metrics table and log widget dynamically
 	go func() {
 		for {
 			select {
@@ -279,8 +241,8 @@ func main() {
 				return
 			case e := <-uiEvents:
 				if e.Type == termui.KeyboardEvent && e.ID == "q" {
-					logToWidget("Received 'q' key. Shutting down MNIST bots...")
-					close(quitChan) // Stop all bots
+					logToWidget("Received 'q'. Stopping bots...")
+					close(quitChan)
 					return
 				}
 			default:
@@ -290,21 +252,18 @@ func main() {
 					{"Total Requests", fmt.Sprintf("%d", totalRequests)},
 					{"Success Requests", fmt.Sprintf("%d", successRequests)},
 					{"Average Latency (ms)", fmt.Sprintf("%.2f", averageLatency)},
-					{"Failed Requests", fmt.Sprintf("%d", failedRequests)},
 				}
 				metricsMutex.Unlock()
-				fmt.Println("\n\n")
+
 				logMutex.Lock()
-				logWidget.Rows = logEntries
+				logWidget.Rows = append([]string{}, logEntries...) // Prevent infinite growth
 				logMutex.Unlock()
 
-				// Ensure proper UI rendering
 				termui.Render(table, logWidget)
 				time.Sleep(1 * time.Second)
 			}
 		}
 	}()
-
 	// Wait for stop signal (Ctrl+C or 'q')
 	select {
 	case <-stopChan:
