@@ -4,7 +4,7 @@ This repository contains the source code for an Automated Request Bot developed 
 
 The bot was instrumental in benchmarking the model's performance under various conditions, including low, medium, and high traffic scenarios, as well as edge computing environments. It was integrated with TensorFlow Serving for efficient model serving.
 
-## Features
+## Featur
 - Customizable Request Rate: Adjust the rate at which requests are sent to simulate different traffic conditions.
 - Concurrent Requests: Utilizes Go's goroutines to send multiple requests concurrently, mimicking real-world usage patterns.
 
